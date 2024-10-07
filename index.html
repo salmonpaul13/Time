@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Table with Alarm</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .time-display {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 10;
+        }
+
+        table {
+            width: 80%;
+            max-width: 900px;
+            margin: 20px auto;
+            border-collapse: collapse;
+            background-color: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background-color: #4CAF50;
+            color: white;
+            text-transform: uppercase;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        input[type="text"] {
+            width: 80%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            text-align: right;
+            font-size: 1rem;
+        }
+
+        td {
+            font-size: 1rem;
+            color: #333;
+        }
+
+        .difference, .difference-percentage {
+            font-weight: bold;
+        }
+
+        .alarm-table {
+            margin-top: 30px;
+            width: 80%;
+            max-width: 900px;
+        }
+
+        /* Button styles */
+        .button-container {
+            margin-top: 30px;
+        }
+
+        .button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            background-color: #4CAF50;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s;
+        }
+
+        .button:hover {
+            background-color: #45a049;
+        }
+    </style>
+    <script>
+        let alarmTimeouts = []; // Array to hold alarm timeouts
+        const alarmAudio = new Audio('alarm.mp3'); // Load the alarm sound
+
+        function formatNumber(num) {
+            return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        }
+
+        function validateNumberInput(input) {
+            input.value = input.value.replace(/[^0-9]/g, ''); // Remove non-numeric characters
+        }
+
+        function calculateDifferenceAndPercentage(row) {
+            const currentPriceInput = row.querySelector(".current-price");
+            const VWAPInput = row.querySelector(".VWAP");
+
+            const currentPrice = parseFloat(currentPriceInput.value.replace(/,/g, '')) || 0;
+            const VWAP = parseFloat(VWAPInput.value.replace(/,/g, '')) || 0;
+
+            const difference = currentPrice - VWAP;
+            const percentage = (currentPrice !== 0) ? ((difference / currentPrice) * 100).toFixed(2) : "0.00"; 
+            
+            row.querySelector(".difference").textContent = formatNumber(difference);
+            row.querySelector(".difference-percentage").textContent = percentage + '%';
+
+            currentPriceInput.value = formatNumber(currentPrice);
+            VWAPInput.value = formatNumber(VWAP);
+        }
+
+        function updateTime() {
+            const timeDisplay = document.querySelector(".time-display");
+            const now = new Date();
+
+            let hours = now.getHours();
+            const minutes = now.getMinutes();
+            const seconds = now.getSeconds();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+
+            hours = hours % 12;
+            hours = hours ? hours : 12; // Handle 12-hour format
+            const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')} ${ampm}`;
+
+            timeDisplay.textContent = formattedTime;
+
+            updateAlarmTimes(); // Update alarm times whenever time is updated
+        }
+
+        function getNextAlarmTime(periodHours) {
+            const now = new Date();
+            const marketStart = new Date();
+            marketStart.setHours(9, 15, 0); // 9:15 AM
+
+            const marketEnd = new Date();
+            marketEnd.setHours(15, 30, 0); // 3:30 PM
+
+            let nextAlarm = new Date(marketStart);
+            while (nextAlarm < now) {
+                nextAlarm.setHours(nextAlarm.getHours() + periodHours); // Add period to the alarm
+                if (nextAlarm > marketEnd) break; // Stop if beyond market hours
+            }
+
+            return nextAlarm > marketEnd ? null : nextAlarm;
+        }
+
+        function formatTimeLeft(nextAlarm) {
+            if (!nextAlarm) return "Market Closed";
+
+            const now = new Date();
+            const timeDiff = nextAlarm - now;
+
+            if (timeDiff <= 0) return "00:00:00"; // No time left
+
+            const hours = Math.floor(timeDiff / (1000 * 60 * 60));
+            const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function updateAlarmTimes() {
+            const periods = [2, 3]; // Periods in hours
+
+            periods.forEach((period, index) => {
+                const nextAlarm = getNextAlarmTime(period);
+                const nextAlarmFormatted = nextAlarm ? nextAlarm.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }) : "N/A";
+                const timeLeft = formatTimeLeft(nextAlarm);
+
+                document.querySelector(`#next-alarm-${index}`).textContent = nextAlarmFormatted;
+                document.querySelector(`#time-left-${index}`).textContent = timeLeft;
+            });
+        }
+
+        function ringAlarm(period) {
+            alarmAudio.play(); // Play the alarm sound
+            alert(`Alarm for ${period}-hour period is ringing!`);
+        }
+
+        function setAlarms() {
+            const periods = [2, 3];
+
+            periods.forEach(period => {
+                const nextAlarm = getNextAlarmTime(period);
+                if (nextAlarm) {
+                    const timeDiff = nextAlarm - new Date();
+                    const timeoutId = setTimeout(() => ringAlarm(period), timeDiff);
+                    alarmTimeouts.push(timeoutId);
+                }
+            });
+        }
+
+        function stopAlarm() {
+            alarmTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+            alarmTimeouts = [];
+            alarmAudio.pause(); // Stop the audio if it's playing
+            alarmAudio.currentTime = 0; // Reset audio to start
+            alert("All alarms stopped!");
+        }
+
+        // Button functions
+        function saveData() {
+            alert("Data saved! (This is a placeholder for actual save functionality.)");
+        }
+
+        // Start setting alarms when the page loads
+        window.onload = setAlarms;
+
+        setInterval(updateTime, 1000); // Update the time every second
+    </script>
+</head>
+<body>
+
+<div class="time-display"></div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Index</th>
+            <th>Current Price</th>
+            <th>VWAP</th>
+            <th>Difference</th>
+            <th>Difference %</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Nifty 50</td>
+            <td><input type="text" class="current-price" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td><input type="text" class="VWAP" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td class="difference">0</td>
+            <td class="difference-percentage">0%</td>
+        </tr>
+        <tr>
+            <td>Bank Nifty</td>
+            <td><input type="text" class="current-price" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td><input type="text" class="VWAP" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td class="difference">0</td>
+            <td class="difference-percentage">0%</td>
+        </tr>
+        <tr>
+            <td>FinNifty</td>
+            <td><input type="text" class="current-price" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td><input type="text" class="VWAP" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td class="difference">0</td>
+            <td class="difference-percentage">0%</td>
+        </tr>
+        <tr>
+            <td>Sensex</td>
+            <td><input type="text" class="current-price" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td><input type="text" class="VWAP" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td class="difference">0</td>
+            <td class="difference-percentage">0%</td>
+        </tr>
+        <tr>
+            <td>Midcap</td>
+            <td><input type="text" class="current-price" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td><input type="text" class="VWAP" oninput="validateNumberInput(this); calculateDifferenceAndPercentage(this.closest('tr'))"></td>
+            <td class="difference">0</td>
+            <td class="difference-percentage">0%</td>
+        </tr>
+    </tbody>
+</table>
+
+<div class="alarm-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Period (hours)</th>
+                <th>Next Alarm</th>
+                <th>Time Left</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>2</td>
+                <td id="next-alarm-0">Loading...</td>
+                <td id="time-left-0">Loading...</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td id="next-alarm-1">Loading...</td>
+                <td id="time-left-1">Loading...</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="button-container">
+    <button class="button" onclick="saveData()">Save</button>
+    <button class="button" onclick="stopAlarm()">Stop</button>
+</div>
+
+<audio id="alarm-sound" src="alarm.mp3" preload="auto"></audio> <!-- Add audio element here -->
+
+</body>
+</html>
